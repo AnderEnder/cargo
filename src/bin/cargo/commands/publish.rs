@@ -6,6 +6,7 @@ pub fn cli() -> App {
     subcommand("publish")
         .about("Upload a package to the registry")
         .arg(opt("quiet", "No output printed to stdout").short("q"))
+        .arg_package("Package to publish")
         .arg_index()
         .arg(opt("token", "Token to use when uploading").value_name("TOKEN"))
         .arg(opt(
@@ -30,6 +31,7 @@ pub fn exec(config: &mut Config, args: &ArgMatches<'_>) -> CliResult {
     let ws = args.workspace(config)?;
     let index = args.index(config)?;
 
+
     ops::publish(
         &ws,
         &PublishOpts {
@@ -39,6 +41,7 @@ pub fn exec(config: &mut Config, args: &ArgMatches<'_>) -> CliResult {
             verify: !args.is_present("no-verify"),
             allow_dirty: args.is_present("allow-dirty"),
             target: args.target(),
+            package: args.value_of("package").map(|s| s.to_string()),
             jobs: args.jobs()?,
             dry_run: args.is_present("dry-run"),
             registry,

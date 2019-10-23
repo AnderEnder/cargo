@@ -38,6 +38,7 @@ pub struct PublishOpts<'cfg> {
     pub allow_dirty: bool,
     pub jobs: Option<u32>,
     pub target: Option<String>,
+    pub package: Option<String>,
     pub dry_run: bool,
     pub registry: Option<String>,
     pub features: Vec<String>,
@@ -46,7 +47,20 @@ pub struct PublishOpts<'cfg> {
 }
 
 pub fn publish(ws: &Workspace<'_>, opts: &PublishOpts<'_>) -> CargoResult<()> {
-    let pkg = ws.current()?;
+    let (packages, resolve) = ops::resolve_ws(ws)?;
+
+    let pkg = match (ws.current_opt(), opts.package.clone()) {
+        (Some(current), _) => current,
+        (_, Some(ref spec)) => {
+            let pkgid = resolve.query(spec)?;
+            packages.get_one(pkgid)?
+        },
+        _ => return Err(failure::format_err!(
+            "manifest is a virtual manifest, but this \
+            command requires running against an actual package in \
+            this workspace, package should selected"
+        )),
+    };
 
     if let Some(ref allowed_registries) = *pkg.publish() {
         let reg_name = opts
@@ -73,10 +87,11 @@ pub fn publish(ws: &Workspace<'_>, opts: &PublishOpts<'_>) -> CargoResult<()> {
     )?;
     verify_dependencies(pkg, &registry, reg_id)?;
 
+    let ws2 = Workspace::new(pkg.manifest_path(), opts.config)?;
     // Prepare a tarball, with a non-surpressable warning if metadata
     // is missing since this is being put online.
     let tarball = ops::package(
-        ws,
+        &ws2,
         &ops::PackageOpts {
             config: opts.config,
             verify: opts.verify,
