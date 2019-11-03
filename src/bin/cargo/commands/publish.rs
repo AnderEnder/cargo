@@ -6,7 +6,8 @@ pub fn cli() -> App {
     subcommand("publish")
         .about("Upload a package to the registry")
         .arg(opt("quiet", "No output printed to stdout").short("q"))
-        .arg_package("Package to publish")
+        // .arg_package("Package to publish")
+        .arg_package_spec_simple("Package to publish")
         .arg_index()
         .arg(opt("token", "Token to use when uploading").value_name("TOKEN"))
         .arg(opt(
@@ -30,10 +31,14 @@ pub fn exec(config: &mut Config, args: &ArgMatches<'_>) -> CliResult {
     let registry = args.registry(config)?;
     let ws = args.workspace(config)?;
     let index = args.index(config)?;
-
+    let specs = args
+        .values_of("spec")
+        .unwrap_or_else(|| args.values_of("package").unwrap_or_default())
+        .collect();
 
     ops::publish(
         &ws,
+        specs,
         &PublishOpts {
             config,
             token: args.value_of("token").map(|s| s.to_string()),

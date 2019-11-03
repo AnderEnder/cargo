@@ -46,21 +46,31 @@ pub struct PublishOpts<'cfg> {
     pub no_default_features: bool,
 }
 
-pub fn publish(ws: &Workspace<'_>, opts: &PublishOpts<'_>) -> CargoResult<()> {
-    let (packages, resolve) = ops::resolve_ws(ws)?;
+pub fn publish(ws: &Workspace<'_>, specs: Vec<&str>, opts: &PublishOpts<'_>) -> CargoResult<()> {
+    let (ws_packages, resolve) = ops::resolve_ws(ws)?;
 
-    let pkg = match (ws.current_opt(), opts.package.clone()) {
-        (Some(current), _) => current,
-        (_, Some(ref spec)) => {
-            let pkgid = resolve.query(spec)?;
-            packages.get_one(pkgid)?
-        },
-        _ => return Err(failure::format_err!(
-            "manifest is a virtual manifest, but this \
-            command requires running against an actual package in \
-            this workspace, package should selected"
-        )),
+    let mut packages = Vec::new();
+    for spec in &specs {
+        let pkgid = resolve.query(spec)?;
+        let pkg = ws_packages.get_one(pkgid)?;
+        packages.push(pkg);
     };
+
+    if packages.len() == 0 {
+        let current_pkg = ws.current()?;
+        packages.push(current_pkg);
+    }
+
+    for pkg in &packages {
+        let ws2 = Workspace::new(pkg.manifest_path(), opts.config)?;
+        publish_one(&ws2, opts)?;
+    }
+
+    Ok(())
+}
+
+fn publish_one(ws: &Workspace<'_>, opts: &PublishOpts<'_>) -> CargoResult<()> {
+    let pkg = ws.current()?;
 
     if let Some(ref allowed_registries) = *pkg.publish() {
         let reg_name = opts
@@ -87,11 +97,10 @@ pub fn publish(ws: &Workspace<'_>, opts: &PublishOpts<'_>) -> CargoResult<()> {
     )?;
     verify_dependencies(pkg, &registry, reg_id)?;
 
-    let ws2 = Workspace::new(pkg.manifest_path(), opts.config)?;
     // Prepare a tarball, with a non-surpressable warning if metadata
     // is missing since this is being put online.
     let tarball = ops::package(
-        &ws2,
+        ws,
         &ops::PackageOpts {
             config: opts.config,
             verify: opts.verify,
